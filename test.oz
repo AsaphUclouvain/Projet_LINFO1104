@@ -40,9 +40,38 @@
 %     transactions: T|T|nil
 % )
 % {Browse {Effort T}}
+% declare
+% Features = [field1 field2 field3]
+% R = {Record.make label Features}
+% K = {Arity R}
+% {Browse R.(K.1)}
+% R.field1 = 100
+% R.field2 = 200
+% declare
+% proc {ExtractGenesisState GS User State_record }
+%     proc {Helper K}
+%         case K of H|T then
+%             User := H|@User
+%             State_record := user(balance:GS.H nonce:1)|@State_record
+%             {Helper T}
+%         end
+%     end
+%     Keys = {Arity GS}
+% in
+%     {Helper Keys}
+% end
+% User = {NewCell nil}
+% State_record = {NewCell nil}
+% GS = state(
+%     12:32314
+%     43:41214
+%     42:214144
+% )
+% {ExtractGenesisState GS User State_record}
+% {Browse @User}
+% {Browse @State_record}
 declare
-Features = [field1 field2 field3]
-R = {Record.make label Features}
-{Browse R}
-R.field1 = 100
-R.field2 = 200
+L = {NewCell 0}|nil
+V = L.1
+V := 2
+{Browse @(L.1)}
