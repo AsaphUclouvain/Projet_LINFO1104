@@ -73,120 +73,155 @@ define
             end
         end
     end
-    %Should be called after the Transaction is validated with ValidateTransaction
-    proc {UpdateStateForSender T User Balance Nonce}
-        CurNonce
-        CurBalance
-    in
-        case User of nil then skip
-        [] H|Tail then
+    proc {UpdateStateForSender T UserList BalList NonceList}
+        case UserList#BalList#NonceList
+        of (H|UTail)#(B|BTail)#(N|NTail) then
             if T.sender == H then
-                CurBalance = Balance.1
-                CurNonce = Nonce.1
-                CurBalance := @CurBalance - T.value
-                CurNonce := T.nonce
+                B := @B - T.value
+                N := T.nonce
             else
-                {UpdateStateForSender T Tail Balance.2 Nonce.2}
+                {UpdateStateForSender T UTail BTail NTail}
             end
-        end
-    end
-    fun {UpdateStateForReceiver T User Balance Nonce}
-        CurBalance
-    in
-        case User of nil then false
-        [] H|Tail then
-            if T.receiver == H then
-                CurBalance = Balance.1
-                CurBalance := @(Balance.1) + T.value
-                true
-            else
-                {UpdateStateForReceiver T Tail Balance Nonce}
-            end
-        end
-    end
-    % Reverse a list
-    fun {ReverseList Lst NewLst}
-        case Lst of nil then NewLst
-        [] H|T then
-            {ReverseList T H|NewLst}
-        end
-    end
-    % This function update the Block and the 
-    % State after validation
-    proc {UpdateState Transactions User Balance Nonce Blockchain}
-        % Add a new Transaction to the Block
-        % Check the max capacity (300)
-        proc {UpdateBlockTransactions Ts T}
-            MaxEffort = 300
-        in
-            if {TotalEffort Ts 0}+{Effort T} =< MaxEffort then
-                Ts := tx(
-                    nonce:T.nonce
-                    block_number: T.number
-                    hash:{TransitionHash T}
-                    sender: T.sender
-                    receiver: T.receiver
-                    value: T.value
-                    effort: {Effort T}
-                    max_effort: T.max_effort
-                )|@Ts
-            end
-        end
-        %compute the BlockHash and add a modified block to the Block chain
-        fun {AddBlock Number BT PrevHash BL}
-            Hash = {BlockHash bl(number:Number previousHash:PrevHash transactions:BT)}
-        in
-            BL := bl(
-                number:Number
-                previousHash:PrevHash
-                transactions:BT
-                hash: Hash
-            )|@BL
-            Hash
-        end
-        PrevTransaction = {NewCell nil}
-        BlockTransactions = {NewCell nil}
-        PreviousHash = {NewCell 0}
-    in
-        case Transactions of nil then
-            BlockTransactions := {ReverseList @BlockTransactions nil} % Reverse the list to the correct order
-            if  @PrevTransaction == nil then
-                PreviousHash := {AddBlock 0 @BlockTransactions @PreviousHash Blockchain}
-            else
-                PreviousHash := {AddBlock @PrevTransaction.block_number @BlockTransactions @PreviousHash Blockchain}
-            end
-        [] H|T then
-            if {ValidateTransaction H @User @Balance @Nonce} then
-                {UpdateStateForSender H @User @Balance @Nonce}
-                if {UpdateStateForReceiver H @User @Balance @Nonce} == false then
-                    User := T.receiver|@User
-                    Balance := T.value|@Balance
-                    Nonce := 0
-                end
-                if {Or @PrevTransaction==nil @PrevTransaction.block_number==H.block_number} then
-                    {UpdateBlockTransactions BlockTransactions H}
-                    PrevTransaction := H
-                elseif {@PrevTransaction.block_number+1 == H.block_number} then
-                    BlockTransactions := {ReverseList @BlockTransactions nil} % Reverse the list to the correct order
-                    PreviousHash := {AddBlock @PrevTransaction.block_number @BlockTransactions @PreviousHash Blockchain}
-                    PrevTransaction := nil
-                    BlockTransactions := nil
-                    PreviousHash := nil
-                    {UpdateBlockTransactions BlockTransactions H}
-                end
-            end
-            {UpdateState T User Balance Nonce Blockchain}
-        else
-            skip
+        [] nil#nil#nil then skip
         end
     end
 
+    % Mise à jour du récepteur
+    fun {UpdateStateForReceiver T UserList BalList NonceList}
+        case UserList#BalList#NonceList
+        of (H|UTail)#(B|BTail)#(N|NTail) then
+            if T.receiver == H then
+                B := @B + T.value
+                true
+            else
+                {UpdateStateForReceiver T UTail BTail NTail}
+            end
+        [] nil#nil#nil then false
+        end
+    end
+    fun {ReverseList Lst NewLst}
+        case Lst of nil then NewLst
+        [] H|T then {ReverseList T H|NewLst}
+        end
+    end
+
+    % Fonctions de construction de blocs utilisées dans UpdateState
+    proc {UpdateBlockTransactions Ts T}
+        MaxEffort = 300
+    in
+        if {TotalEffort @Ts 0} + {Effort T} =< MaxEffort then
+            Ts := tx(
+                nonce: T.nonce
+                block_number: T.block_number
+                hash: {TransitionHash T}
+                sender: T.sender
+                receiver: T.receiver
+                value: T.value
+                effort: {Effort T}
+                max_effort: T.max_effort
+            )|@Ts
+        end
+    end
+
+    fun {AddBlock Number BT PrevHash BL}
+        Hash = {BlockHash bl(number:Number previousHash:PrevHash transactions:BT)}
+    in
+        BL := bl(
+            number: Number
+            previousHash: PrevHash
+            transactions: BT
+            hash: Hash
+        )|@BL
+        Hash
+    end
+
+    % --- La fonction UpdateState récursive ---
+
+    proc {UpdateState Transactions User Balance Nonce Blockchain}
+        % On utilise des variables persistantes pour l'état du bloc en cours
+        PrevTransaction = {NewCell nil}
+        BlockTransactions = {NewCell nil}
+        PreviousHash = {NewCell 0}
+
+        proc {RecursiveUpdate Ts}
+            case Ts of nil then
+                if @BlockTransactions \= nil then
+                    PreviousHash := {AddBlock (@PrevTransaction).block_number {ReverseList @BlockTransactions nil} @PreviousHash Blockchain}
+                end
+            [] H|T then
+                if {ValidateTransaction H @User @Balance @Nonce} then
+                    {UpdateStateForSender H @User @Balance @Nonce}
+
+                    % Si un le receveur n'existe pas, on l'ajoute ici.
+                    if {Not {UpdateStateForReceiver H @User @Balance @Nonce}} then
+                        User := H.receiver|@User
+                        Balance :={NewCell H.value}|@Balance
+                        Nonce := {NewCell 0}|@Nonce
+                    end
+                    
+                    % Logique de changement de bloc
+                    if @PrevTransaction \= nil andthen H.block_number \= (@PrevTransaction).block_number then
+                        PreviousHash := {AddBlock (@PrevTransaction).block_number {ReverseList @BlockTransactions nil} @PreviousHash Blockchain}
+                        BlockTransactions := nil
+                    end
+
+                    {UpdateBlockTransactions BlockTransactions H}
+                    PrevTransaction := H
+                end
+                {RecursiveUpdate T}
+            end
+        end
+    in
+        {RecursiveUpdate Transactions}
+    end
+    fun {BuildFinalState UserList BalList NonceList State}
+        case UserList#BalList#NonceList
+        of (H|UTail)#(B|BTail)#(N|NTail) then
+            {BuildFinalState UTail BTail NTail state(H: user(balance:@B nonce:@N))|State}
+        [] nil#nil#nil then State
+        end
+    end
     %% Return a string representation of the secret
     fun {Decode Blockchain}
         %% STUDENT START:
         %% TODO
         %% STUDENT END
-        0
+        % Table de Sharelock : convertit un nombre (10-36) en caractère
+        fun {GetLetter N}
+            if N == 36 then & 
+            elseif N >= 10 andthen N =< 35 then (N - 10) + &a
+            else &? % Cas non défini (sécurité)
+            end
+        end
+
+        % Extrait les paires d'une liste de chiffres
+        fun {ProcessPairs Digits}
+            case Digits
+            of D1|D2|Rest then
+                X = (D1 * 10 + D2)
+                Nombre = (X mod 37)
+                FinalN = if Nombre < 10 then 36 else Nombre end
+            in
+                {GetLetter FinalN} | {ProcessPairs Rest}
+            [] _|nil then nil % Si impair, on ignore le dernier chiffre
+            [] nil then nil
+            end
+        end
+
+        % Traite chaque bloc de la blockchain[cite: 1]
+        fun {LoopBlocks BL}
+            case BL
+            of B|Rest then
+                % transforme le block en liste de chiffres
+                HashStr = {Int.toString B.hash}
+                Digits = {Map HashStr fun {$ C} C - &0 end}
+            in
+                {Append {ProcessPairs Digits} {LoopBlocks Rest}}
+            [] nil then nil
+            end
+        end
+    in
+        {LoopBlocks Blockchain}
     end
 
 
@@ -208,6 +243,7 @@ define
         %    else skip it
         {ExtractGenesisState GenesisState User Balance Nonce}
         {UpdateState Transactions User Balance Nonce Blockchain}
+        FinalState = {ReverseList {BuildFinalState @User @Balance @Nonce nil} nil}
         FinalBlockchain = {ReverseList @Blockchain nil}
     end
 end

@@ -71,20 +71,5 @@
 % {Browse @User}
 % {Browse @State_record}
 declare
-fun {ValidateTransaction T User Balance Nonce}
-    case User
-    of nil then false
-    [] H|Tail then
-        if T.sender == H then
-            T.value >= 0 andthen
-            T.value =< @(Balance.1) andthen
-            T.hash == {TransitionHash T} andthen
-            T.nonce == @(Nonce.1) + 1 andthen
-            T.max_effort >= 0 andthen 
-            {Effort T} =< T.max_effort
-        else
-            {ValidateTransaction T Tail Balance.2 Nonce.2}
-        end
-    end
-end
-{Browse {ReverseList [1 2 3]}}
+Str = 'a'
+{Browse Str}
