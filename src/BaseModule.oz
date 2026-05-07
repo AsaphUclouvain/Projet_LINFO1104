@@ -5,10 +5,12 @@ export
     decode:Decode
     executeBlockchain:ExecuteBlockchain
 define
+
     % This function compute the hash of a transaction
     fun {TransitionHash T}
         (T.nonce+T.sender+T.receiver+T.value) mod {Pow 10 6}
     end
+
     % This function compute the hash of a Block
     fun {BlockHash B}
         fun {SumHash Acc Transactions}
@@ -20,6 +22,7 @@ define
     in
         (B.number+B.previousHash+Sum_hash) mod {Pow 10 6}
     end
+
     % This function compute the effort of a transaction
     fun {Effort T}
         fun {CountDigits N}
@@ -33,13 +36,15 @@ define
         end
         @Res
     end
-    % This function compute the effort of a Block
+
+    % returns the effort of a Block
     fun {TotalEffort Transactions E}
         case Transactions of nil then E
         [] Transaction|Tail then 
             {TotalEffort Tail E+{Effort Transaction}}
         end
     end
+
     % Extracts the first transaction data from the GenesisState (GS)
     proc {ExtractGenesisState GS User Balance Nonce }
         proc {Helper K}
@@ -55,8 +60,8 @@ define
     in
         {Helper Keys}
     end
-    % User est une liste de constante
-    % Balance et Nonce sont des listes d'addresses
+
+    % returns true if transaction (T) is valid, else false
     fun {ValidateTransaction T User Balance Nonce}
         case User
         of nil then false
@@ -73,6 +78,8 @@ define
             end
         end
     end
+
+    % Update the sender data
     proc {UpdateStateForSender T UserList BalList NonceList}
         case UserList#BalList#NonceList
         of (H|UTail)#(B|BTail)#(N|NTail) then
@@ -99,6 +106,8 @@ define
         [] nil#nil#nil then false
         end
     end
+
+    % Returns a reversed version of a list
     fun {ReverseList Lst NewLst}
         case Lst of nil then NewLst
         [] H|T then {ReverseList T H|NewLst}
@@ -123,6 +132,7 @@ define
         end
     end
 
+    % Add a new block from the Block Transaction (BT) to the Blockchain (BL) and returns the computed hash
     fun {AddBlock Number BT PrevHash BL}
         Hash = {BlockHash bl(number:Number previousHash:PrevHash transactions:BT)}
     in
@@ -135,15 +145,15 @@ define
         Hash
     end
 
-    % --- La fonction UpdateState récursive ---
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % --- AppendToBlockchain ---%
 
-    proc {UpdateState Transactions User Balance Nonce Blockchain}
-        % On utilise des variables persistantes pour l'état du bloc en cours
+    proc {AppendToBlockchain Transactions User Balance Nonce Blockchain}
         PrevTransaction = {NewCell nil}
         BlockTransactions = {NewCell nil}
         PreviousHash = {NewCell 0}
 
-        proc {RecursiveUpdate Ts}
+        proc {RecursiveAppend Ts}
             case Ts of nil then
                 if @BlockTransactions \= nil then
                     PreviousHash := {AddBlock (@PrevTransaction).block_number {ReverseList @BlockTransactions nil} @PreviousHash Blockchain}
@@ -152,14 +162,14 @@ define
                 if {ValidateTransaction H @User @Balance @Nonce} then
                     {UpdateStateForSender H @User @Balance @Nonce}
 
-                    % Si un le receveur n'existe pas, on l'ajoute ici.
+                    % If the receiver don't exists, we add him here
                     if {Not {UpdateStateForReceiver H @User @Balance @Nonce}} then
                         User := H.receiver|@User
                         Balance :={NewCell H.value}|@Balance
                         Nonce := {NewCell 0}|@Nonce
                     end
                     
-                    % Logique de changement de bloc
+                    % current lock updating logic
                     if @PrevTransaction \= nil andthen H.block_number \= (@PrevTransaction).block_number then
                         PreviousHash := {AddBlock (@PrevTransaction).block_number {ReverseList @BlockTransactions nil} @PreviousHash Blockchain}
                         BlockTransactions := nil
@@ -168,12 +178,14 @@ define
                     {UpdateBlockTransactions BlockTransactions H}
                     PrevTransaction := H
                 end
-                {RecursiveUpdate T}
+                {RecursiveAppend T}
             end
         end
     in
-        {RecursiveUpdate Transactions}
+        {RecursiveAppend Transactions}
     end
+
+    % Build the Final State of the Blockchain
     fun {BuildFinalState UserList BalList NonceList State}
         case UserList#BalList#NonceList
         of (H|UTail)#(B|BTail)#(N|NTail) then
@@ -181,20 +193,18 @@ define
         [] nil#nil#nil then State
         end
     end
-    %% Return a string representation of the secret
+
+    %% returns a string representation of the secret
     fun {Decode Blockchain}
-        %% STUDENT START:
-        %% TODO
-        %% STUDENT END
-        % Table de Sharelock : convertit un nombre (10-36) en caractère
+        % Sharelock Table : convert a number (10-36) to character
         fun {GetLetter N}
             if N == 36 then & 
             elseif N >= 10 andthen N =< 35 then (N - 10) + &a
-            else &? % Cas non défini (sécurité)
+            else &? % undefined case (security)
             end
         end
 
-        % Extrait les paires d'une liste de chiffres
+        % Extract pairs from a list of digits
         fun {ProcessPairs Digits}
             case Digits
             of D1|D2|Rest then
@@ -203,16 +213,16 @@ define
                 FinalN = if Nombre < 10 then 36 else Nombre end
             in
                 {GetLetter FinalN} | {ProcessPairs Rest}
-            [] _|nil then nil % Si impair, on ignore le dernier chiffre
+            [] _|nil then nil % we skip the last digit if odd
             [] nil then nil
             end
         end
 
-        % Traite chaque bloc de la blockchain[cite: 1]
+        % Processes each block
         fun {LoopBlocks BL}
             case BL
             of B|Rest then
-                % transforme le block en liste de chiffres
+                % Turns the block hash into a list of digits
                 HashStr = {Int.toString B.hash}
                 Digits = {Map HashStr fun {$ C} C - &0 end}
             in
@@ -228,21 +238,13 @@ define
     % This function is the starting point of the execution
     % The GenesisState and the Transactions are given as input and the function is expected to bound the FinalState and the FinalBlockchain to their respective final values.
     proc {ExecuteBlockchain GenesisState Transactions FinalState FinalBlockchain}
-        %% STUDENT START:
-        %% TODO
-        %% STUDENT END
         User = {NewCell nil}
         Balance = {NewCell nil}
         Nonce = {NewCell nil}
         Blockchain = {NewCell nil}
     in
-        %Extract genesis state and initiate the noce to 0
-        %Process transactions in order
-        %    For each transaction Check if valid with user Balance and Nonce
-        %    If valid, add the transaction
-        %    else skip it
         {ExtractGenesisState GenesisState User Balance Nonce}
-        {UpdateState Transactions User Balance Nonce Blockchain}
+        {AppendToBlockchain Transactions User Balance Nonce Blockchain}
         FinalState = {ReverseList {BuildFinalState @User @Balance @Nonce nil} nil}
         FinalBlockchain = {ReverseList @Blockchain nil}
     end

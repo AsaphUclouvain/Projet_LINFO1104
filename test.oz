@@ -71,5 +71,6 @@
 % {Browse @User}
 % {Browse @State_record}
 declare
-Str = 'a'
-{Browse Str}
+Var = ct(a:{NewCell 1})|nil
+(Var.1.a) := 2
+{Browse @(Var.1.a)}
