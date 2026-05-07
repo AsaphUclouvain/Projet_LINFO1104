@@ -96,7 +96,7 @@ define
         end
     end
 
-    % Mise à jour du récepteur
+    % update receiver data and returns true on success, false on failure
     fun {UpdateStateForReceiver T UserList BalList NonceList}
         case UserList#BalList#NonceList
         of (H|UTail)#(B|BTail)#(N|NTail) then
