@@ -1,6 +1,4 @@
 functor
-import
-    System
 export
     decode:Decode
     executeBlockchain:ExecuteBlockchain
@@ -98,16 +96,16 @@ define
     end
 
     % update receiver data and returns true on success, false on failure
-    fun {UpdateStateForReceiver T UserList BalList NonceList}
-        case UserList#BalList#NonceList
-        of (H|UTail)#(B|BTail)#(N|NTail) then
+    fun {UpdateStateForReceiver T UserList BalList}
+        case UserList#BalList
+        of (H|UTail)#(B|BTail) then
             if T.receiver == H then
                 B := @B + T.value
                 true
             else
-                {UpdateStateForReceiver T UTail BTail NTail}
+                {UpdateStateForReceiver T UTail BTail}
             end
-        [] nil#nil#nil then false
+        [] nil#nil then false
         end
     end
 
@@ -165,7 +163,7 @@ define
             [] H|T then
                 if {UpdateStateForSender H @User @Balance @Nonce @CountTransac} then
                     % If the receiver don't exists, we add him here
-                    if {Not {UpdateStateForReceiver H @User @Balance @Nonce}} then
+                    if {Not {UpdateStateForReceiver H @User @Balance}} then
                         User := H.receiver|@User
                         Balance :={NewCell H.value}|@Balance
                         Nonce := {NewCell 0}|@Nonce
